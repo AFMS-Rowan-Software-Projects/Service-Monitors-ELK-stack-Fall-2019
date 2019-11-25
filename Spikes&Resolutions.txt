@@ -1,0 +1,21 @@
+@Tucker Elliott
+Spikes during Sprint 5
+
+-docker toolbox uses a set IP and we cannot access the program running on localhost from our browser as far as i could tell.
+
+-we switched to docker on a linux vm, this is because docker toolbox (which is for use on windows 10 home) was causing a lot of odd issues and we dont have access to a mac or windows 10 pro/enterprise, either of which we could just use docker desktop. This switch resolved a lot of our odd issues that we could not find a fix for. This includes being able to run a program and access it from local host in a browser.
+
+-we were also not able to allocate the correct amount of resources using docker toolbox, as the elastic stack needs quite a bit more memory than docker toolbox was allowing. 
+	Resolved: using the linux vm and giving it the correct amount of 		memory and disk space and running the sysctl command to give 		docker and elastic the resources it needs to run.
+
+-for the time being we are running the APM server outside of docker until we can resolve the container exiting issue.
+
+-had an issue with building the jar file with maven.
+	Resolved: needed to add another plugin to the pom.xml file. The 		maven surefire plugin was required in this case.
+
+-having an issue with the apm server refusing connection when requested by the apm agent when using the automatic apm agent attacher.
+
+-apm agent is giving an error occuring when running docker image and using the manual javaagent flag in the dockerfile entrypoint,
+ Error occurred during initialization of VM
+ agent library faild to init: instrument
+ Error opening zip file or JAR manifest missing: /home/tde/spring-boot-websocket-chat-demo/elastic-apm-agent-1.12.0.jar

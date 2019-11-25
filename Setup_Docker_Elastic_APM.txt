@@ -1,0 +1,171 @@
+@Tucker Elliott
+Steps for setting up the pieces of this project.
+
+https://www.youtube.com/watch?v=ksQ8KEONkmQ&t=722s
+
+-Quick tutorial on setting up an Ubuntu VM.
+-The video uses a different version of Ubuntu, but it works the same way.
+-We want to use Ubuntu 18.04:
+	https://ubuntu.com/download/desktop
+-Follow the video, I skipped the setup for fullscreen mode and make sure to set the amount of RAM for the VM is a little more than 4GB (I went with around 5 to be safe) and I made the disk size around 80GB (again just to be safe)
+-These preferences can also be changed later.
+
+----------------------------------------------
+
+Docker:
+-run these commands to set up the repository: 
+	
+1.	sudo apt-get update
+	
+2.	sudo apt-get install apt-transport-https ca-certificates curl gnupg-agen software-properties-common
+
+3.	curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+4.	sudo add-apt-repository "deb [arch=amd64] https:download.docker.com/linux/ubuntu bionic stable"
+
+-now to install docker ce
+(step 3 is good to verify the install)
+
+1.	sudo apt-get update
+
+2.	sudo apt-get install docker-ce docker-ce-cli container.io
+
+3.	sudo docker run hello-world
+
+----------------------------------------------
+
+Elastic Stack:
+-no need to pull each image, we will create a docker-compose.yml that will set up the containers. We are using a recommended docker compose file from Elastic that shows how to run multiple containers in a cluster.
+-use: sudo gedit docker-compose.yml 
+-then paste the following:
+(yaml files are very strict with whitespace, do not use tabs only spaces and make sure the nesting is formatted properly)
+
+version: '2.2'
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es02,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - elastic
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data02:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+  es03:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
+    container_name: es03
+    environment:
+      - node.name=es03
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es02
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data03:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+volumes:
+  data01:
+    driver: local
+  data02:
+    driver: local
+  data03:
+    driver: local
+
+networks:
+  elastic:
+    driver: bridge
+
+-from here run:
+	sudo sysctl -w vm.max_map_count=262155 
+-this allocates the resources for elasticsearch and kibana to run
+-now you can run:
+	sudo docker-compose up
+-and wait for the setup
+-you can use: sudo docker-compose ps :to check what containers are running from another terminal window.
+-in a browser (i used firefox) open localhost:5601 to open the kibana page
+-click "add APM" on the kibana home page
+-to install and start the apm server run these commands in a new terminal window (leave the other one open and running):
+(step one is letter O not number 0)
+
+1.	curl -L -O https://artifacts.elastic.co/downloads/apm-server/apm-server-7.4.2-amd64.deb
+
+2.	sudo dpkg -i apm-server-7.4.2-amd64.deb
+
+3.	service apm-server start
+
+-in kibana there is a button to check the apm server status
+
+----------------------------------------------
+
+Now that we have kibana and elasticsearch running as containers and the APM server started we can work on creating a jar file in which we can implement the java APM agent.
+
+We should focus on using Maven to create said jar file, and Spring Boot as our means of creating the java application.
+
+-we are starting with a demo project from a github repo as this is our first time using the spring boot framework and maven so we wanted to have a foundation that gives us some baseline references going forward.
+
+-we do need to add another plugin to the pom.xml of our specific project to succeed on the build:
+	<plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-surefire-plugin</artifactId>
+		<version>2.19.1</version>
+	</plugin>
+
+-------------------------------------------------------------------------
+
+APM agent:
+-first we have to download the apm agent jar from Maven Central:
+https://mvnrepository.com/artifact/co.elastic.apm/elastic-apm-agent/1.12.0
+
+-then we need to add the dependency to our pom.xml for our project:
+<dependency>
+    <groupId>co.elastic.apm</groupId>
+    <artifactId>elastic-apm-agent</artifactId>
+    <version>1.12.0</version>
+</dependency>
+
+-now we need to add the config for the apm agent to our elasticapm.properties file which can be added to the resources folder in our java project, usually found at: src/main/resources directory
+
+-finally we can add the javaagent flag to our project's Dockerfile in the ENTRYPOINT:
+	-javaagent:/path/to/elastic-apm-agent-<version>.jar
+
+-now the program should run with the apm agent attached to send data to the APM server, but this is where we are running into an issue. When we run our docker image we get the error:
+ Error occurred during initialization of VM
+ agent library faild to init: instrument
+ Error opening zip file or JAR manifest missing: /home/tde/spring-boot-websocket-chat-demo/elastic-apm-agent-1.12.0.jar
+
