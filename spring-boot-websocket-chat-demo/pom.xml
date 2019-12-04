@@ -54,12 +54,7 @@
 			<scope>test</scope>
 		</dependency>
 
-        <dependency>
-            <groupId>co.elastic.apm</groupId>
-            <artifactId>elastic-apm-agent</artifactId>
-            <version>1.12.0</version>
-            <scope>provided</scope>
-        </dependency>
+        
 	</dependencies>
 
 	<build>
