@@ -15,6 +15,7 @@ ARG JAR_FILE=target/websocket-demo-0.0.1-SNAPSHOT.jar
 
 # Add the application's jar to the container
 ADD ${JAR_FILE} websocket-demo.jar
+ADD ${JAR_FILE} elastic-apm-agent-1.12.0.jar
 
 # Run the jar file 
 ENTRYPOINT ["java","-javaagent:/home/tde/spring-boot-websocket-chat-demo/elastic-apm-agent-1.12.0.jar","-Djava.security.egd=file:/dev/./urandom","-jar","/websocket-demo.jar"]
