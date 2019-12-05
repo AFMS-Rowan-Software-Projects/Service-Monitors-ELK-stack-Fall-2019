@@ -119,15 +119,19 @@ networks:
 -and wait for the setup
 -you can use: sudo docker-compose ps :to check what containers are running from another terminal window.
 -in a browser (i used firefox) open localhost:5601 to open the kibana page
--click "add APM" on the kibana home page
--to install and start the apm server run these commands in a new terminal window (leave the other one open and running):
-(step one is letter O not number 0)
 
-1.	curl -L -O https://artifacts.elastic.co/downloads/apm-server/apm-server-7.4.2-amd64.deb
-
-2.	sudo dpkg -i apm-server-7.4.2-amd64.deb
-
-3.	service apm-server start
+-we can pull the apm server image from Elastic:
+	docker pull docker.elastic.co/apm/apm-server:7.5.0
+-then we can add the configuration .yml file from Elastic:
+	curl -L -O https://raw.githubusercontent.com/elastic/apm-server/7.5/apm-server.docker.yml
+-and then we can run the apm server:
+	docker run -d \
+	  --name=apm-server \
+	  --user=apm-server \
+	  --volume="$(pwd)/apm-server.docker.yml:/usr/share/apm-server/apm-server.yml:ro" \
+	  docker.elastic.co/apm/apm-server:7.5.0 \
+	  --strict.perms=false -e \
+	  -E output.elasticsearch.hosts=["elasticsearch:9200"]
 
 -in kibana there is a button to check the apm server status
 
@@ -152,20 +156,20 @@ APM agent:
 -first we have to download the apm agent jar from Maven Central:
 https://mvnrepository.com/artifact/co.elastic.apm/elastic-apm-agent/1.12.0
 
--then we need to add the dependency to our pom.xml for our project:
-<dependency>
-    <groupId>co.elastic.apm</groupId>
-    <artifactId>elastic-apm-agent</artifactId>
-    <version>1.12.0</version>
-</dependency>
-
 -now we need to add the config for the apm agent to our elasticapm.properties file which can be added to the resources folder in our java project, usually found at: src/main/resources directory
+
+-we need to COPY the agent into the application's container using the Dockerfile:
+	COPY ./elastic-apm-agent-1.12.0.jar /path/to/elastic-apm-agent-1.12.0.jar
 
 -finally we can add the javaagent flag to our project's Dockerfile in the ENTRYPOINT:
 	-javaagent:/path/to/elastic-apm-agent-<version>.jar
 
+***This Issue was resolved using the above addition to the Dockerfile with COPY***
 -now the program should run with the apm agent attached to send data to the APM server, but this is where we are running into an issue. When we run our docker image we get the error:
  Error occurred during initialization of VM
  agent library faild to init: instrument
  Error opening zip file or JAR manifest missing: /home/tde/spring-boot-websocket-chat-demo/elastic-apm-agent-1.12.0.jar
+***This Issue was resolved using the above addition to the Dockerfile with COPY***
+
+-There is a new issue when starting the spring boot app that shows the APM agent having its connection to the APM server refused. Could be an issue with the server configuration.
 
