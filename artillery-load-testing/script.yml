@@ -1,0 +1,20 @@
+config:
+  target: "http://localhost:8080"
+  processor: "./processor.js"
+  phases:
+  - duration: 60
+    arrivalRate: 20
+scenarios:
+- name: "POST"
+  flow:
+  - post:
+      headers:
+        content-type: "application/json"
+      url: "/orders"
+      beforeRequest: "assignNewId"
+      body: |
+        {
+          "orderId": "@@id@@",
+          "itemId": "1",
+          "customerId": "1"
+        }
