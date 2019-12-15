@@ -9,11 +9,13 @@ https://www.youtube.com/watch?v=ksQ8KEONkmQ&t=722s
 	https://ubuntu.com/download/desktop
 -Follow the video, I skipped the setup for fullscreen mode and make sure to set the amount of RAM for the VM is a little more than 4GB (I went with around 5 to be safe) and I made the disk size around 80GB (again just to be safe)
 -These preferences can also be changed later.
-
+-When starting the VM make sure to run:
+	sudo sysctl -w vm.max_map_count=262155 
+-this will take advantage of the memory settings we set when creating the VM and is necessary to run the elastic stack.
 ----------------------------------------------
 
 Docker:
--run these commands to set up the repository: 
+-run these commands to set up you Docker repository: 
 	
 1.	sudo apt-get update
 	
@@ -24,7 +26,7 @@ Docker:
 4.	sudo add-apt-repository "deb [arch=amd64] https:download.docker.com/linux/ubuntu bionic stable"
 
 -now to install docker ce
-(step 3 is good to verify the install)
+(step 3 is for verifying the install)
 
 1.	sudo apt-get update
 
@@ -35,105 +37,67 @@ Docker:
 ----------------------------------------------
 
 Elastic Stack:
--no need to pull each image, we will create a docker-compose.yml that will set up the containers. We are using a recommended docker compose file from Elastic that shows how to run multiple containers in a cluster.
--use: sudo gedit docker-compose.yml 
--then paste the following:
-(yaml files are very strict with whitespace, do not use tabs only spaces and make sure the nesting is formatted properly)
+-You can pull each service for elastic individually, but we will set up a docker-compose.yml to pull all necessary images and run them.
+-use: sudo gedit docker-compose.yml and configure the file as needed.
+-Our compose file looks like:
 
-version: '2.2'
+version: "3"
 services:
-  es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
-    container_name: es01
-    environment:
-      - node.name=es01
-      - cluster.name=es-docker-cluster
-      - discovery.seed_hosts=es02,es03
-      - cluster.initial_master_nodes=es01,es02,es03
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - data01:/usr/share/elasticsearch/data
+  apm-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.2
     ports:
-      - 9200:9200
-    networks:
-      - elastic
-  es02:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
-    container_name: es02
+    - 9200
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.4.2
     environment:
-      - node.name=es02
-      - cluster.name=es-docker-cluster
-      - discovery.seed_hosts=es01,es03
-      - cluster.initial_master_nodes=es01,es02,es03
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - data02:/usr/share/elasticsearch/data
-    networks:
-      - elastic
-  es03:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.2
-    container_name: es03
+      ELASTICSEARCH_URL: http://apm-elasticsearch:9200
+    ports:
+    - 5601:5601
+    links:
+    - apm-elasticsearch
+    depends_on:
+    - apm-elasticsearch
+  elastic-apm-server:
+    image: docker.elastic.co/apm/apm-server:6.5.0
+    command: [
+      "bash",
+      "-c",
+      "apm-server run -e -E
+                          output.elasticsearch.hosts=['http://apm-elasticsearch:9200']
+                          "]
+    ports:
+    - 8200
+    links:
+    - apm-elasticsearch
+    depends_on:
+    - apm-elasticsearch
+  order-service:
+    image: docker.io/devbhuwan/order-service
+    build:
+      context: order-service
+      dockerfile: Dockerfile
+      args:
+      - JAR_FILE=target/order-service-1.0-SNAPSHOT.jar
+    ports:
+    - 8080:8080
     environment:
-      - node.name=es03
-      - cluster.name=es-docker-cluster
-      - discovery.seed_hosts=es01,es02
-      - cluster.initial_master_nodes=es01,es02,es03
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - data03:/usr/share/elasticsearch/data
-    networks:
-      - elastic
+      ELASTIC_APM_SERVICE_NAME: order-service
+      ELASTIC_APM_APPLICATION_PACKAGES: io.github.bhuwanupadhyay
+      ELASTIC_APM_SERVER_URLS: http://elastic-apm-server:8200
+    links:
+    - elastic-apm-server
+    depends_on:
+    - elastic-apm-server
 
-volumes:
-  data01:
-    driver: local
-  data02:
-    driver: local
-  data03:
-    driver: local
 
-networks:
-  elastic:
-    driver: bridge
-
--from here run:
-	sudo sysctl -w vm.max_map_count=262155 
--this allocates the resources for elasticsearch and kibana to run
--now you can run:
+- .yml files are very particular about spacing and will break if you use tabs. Make sure you only use spaces and correct indentation.
+-Now you can run:
 	sudo docker-compose up
--and wait for the setup
--you can use: sudo docker-compose ps :to check what containers are running from another terminal window.
--in a browser (i used firefox) open localhost:5601 to open the kibana page
+-Wait for the setup. This will take a little while, but the text on screen will stall and you will know everything has been created.
+-You can use: sudo docker-compose ps :to check what containers are running from another terminal window.
+-In a browser (I used firefox) open localhost:5601 to open the kibana page. If the containers aren't fully created or running you will get an error message. If so, refresh after another minute or so.
 
--we can pull the apm server image from Elastic:
-	docker pull docker.elastic.co/apm/apm-server:7.5.0
--then we can add the configuration .yml file from Elastic:
-	curl -L -O https://raw.githubusercontent.com/elastic/apm-server/7.5/apm-server.docker.yml
--and then we can run the apm server:
-	docker run -d \
-	  --name=apm-server \
-	  --user=apm-server \
-	  --volume="$(pwd)/apm-server.docker.yml:/usr/share/apm-server/apm-server.yml:ro" \
-	  docker.elastic.co/apm/apm-server:7.5.0 \
-	  --strict.perms=false -e \
-	  -E output.elasticsearch.hosts=["elasticsearch:9200"]
-
--in kibana there is a button to check the apm server status
+-As long as your docker-compose file is correct you will have all of your services running in containers and communicating with each other.
 
 ----------------------------------------------
 
@@ -156,7 +120,7 @@ APM agent:
 -first we have to download the apm agent jar from Maven Central:
 https://mvnrepository.com/artifact/co.elastic.apm/elastic-apm-agent/1.12.0
 
--now we need to add the config for the apm agent to our elasticapm.properties file which can be added to the resources folder in our java project, usually found at: src/main/resources directory
+-You may need to add the config for the apm agent to an elasticapm.properties file which can be added to the resources folder in your java project, usually found at: src/main/resources
 
 -we need to COPY the agent into the application's container using the Dockerfile:
 	COPY ./elastic-apm-agent-1.12.0.jar /path/to/elastic-apm-agent-1.12.0.jar
@@ -164,12 +128,5 @@ https://mvnrepository.com/artifact/co.elastic.apm/elastic-apm-agent/1.12.0
 -finally we can add the javaagent flag to our project's Dockerfile in the ENTRYPOINT:
 	-javaagent:/path/to/elastic-apm-agent-<version>.jar
 
-***This Issue was resolved using the above addition to the Dockerfile with COPY***
--now the program should run with the apm agent attached to send data to the APM server, but this is where we are running into an issue. When we run our docker image we get the error:
- Error occurred during initialization of VM
- agent library faild to init: instrument
- Error opening zip file or JAR manifest missing: /home/tde/spring-boot-websocket-chat-demo/elastic-apm-agent-1.12.0.jar
-***This Issue was resolved using the above addition to the Dockerfile with COPY***
 
--There is a new issue when starting the spring boot app that shows the APM agent having its connection to the APM server refused. Could be an issue with the server configuration.
 
