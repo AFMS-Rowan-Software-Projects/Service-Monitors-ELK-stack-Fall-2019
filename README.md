@@ -15,3 +15,5 @@ sudo npm install
 sudo npm run test
 ```
 This runs a test for the Spring Boot app that sends a lot of requests back and forth over the open port. Then we can see different things like response times, amount of requests, run time and if there are any errors that occur during the test.
+
+The spring-boot-websocket-chat-demo was another program we were working with, but could not resolve the issue of it not connecting to the APM server.
